@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { profiles } from '../lib/api';
+import { profiles, auth } from '../lib/api';
 
 export default function Swipe() {
   const router = useRouter();
@@ -9,23 +9,54 @@ export default function Swipe() {
   const [loading, setLoading] = useState(true);
   const [swiping, setSwiping] = useState(false);
   const [showMatch, setShowMatch] = useState(false);
+  const [canSwipe, setCanSwipe] = useState(false);
+  const [photoWarning, setPhotoWarning] = useState('');
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
       router.push('/');
       return;
     }
-    fetchProfiles();
+    checkPermissionAndFetchProfiles();
   }, [router]);
 
-  const fetchProfiles = async () => {
+  const checkPermissionAndFetchProfiles = async () => {
     setLoading(true);
+    try {
+      // First check if user has photos
+      const canSwipeResponse = await profiles.canSwipe();
+      const { canSwipe: allowed, message } = canSwipeResponse.data;
+      
+      if (!allowed) {
+        setPhotoWarning(message);
+        setCanSwipe(false);
+        setLoading(false);
+        return;
+      }
+      
+      setCanSwipe(true);
+      setPhotoWarning('');
+      
+      // If user can swipe, fetch profiles
+      await fetchProfiles();
+    } catch (err) {
+      console.error('Failed to check swipe permission:', err);
+      setLoading(false);
+    }
+  };
+
+  const fetchProfiles = async () => {
     try {
       const response = await profiles.getQueue();
       setQueue(response.data);
       setCurrentIndex(0);
     } catch (err) {
       console.error('Failed to fetch profiles:', err);
+      // If error is about missing photo, show warning
+      if (err.includes && err.includes('upload a photo')) {
+        setPhotoWarning('You must upload at least one photo to see other profiles');
+        setCanSwipe(false);
+      }
     }
     setLoading(false);
   };
@@ -52,9 +83,19 @@ export default function Swipe() {
       }
     } catch (err) {
       console.error('Swipe failed:', err);
+      // Show error to user
+      if (err.includes && err.includes('Cannot swipe on yourself')) {
+        alert('You cannot swipe on yourself!');
+      }
     }
     
     setSwiping(false);
+  };
+
+  const handleLogout = () => {
+    if (confirm('Are you sure you want to logout?')) {
+      auth.logout();
+    }
   };
 
   const currentProfile = queue[currentIndex];
@@ -88,11 +129,17 @@ export default function Swipe() {
             >
               Matches
             </button>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Swipe Card */}
+      {/* Main Content */}
       <div className="max-w-lg mx-auto">
         {loading ? (
           <div className="bg-white rounded-lg shadow-xl p-12 text-center">
@@ -101,7 +148,23 @@ export default function Swipe() {
               <div className="h-64 bg-gray-200 rounded"></div>
             </div>
           </div>
+        ) : !canSwipe ? (
+          // Photo Warning State
+          <div className="bg-white rounded-lg shadow-xl p-8 text-center">
+            <div className="text-6xl mb-4">📸</div>
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Photo Required</h2>
+            <p className="text-gray-500 mb-6">
+              {photoWarning || 'You must upload at least one photo to see other profiles'}
+            </p>
+            <button
+              onClick={() => router.push('/profile')}
+              className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-semibold"
+            >
+              Upload Photo Now
+            </button>
+          </div>
         ) : currentProfile ? (
+          // Swipe Card
           <div className="bg-white rounded-lg shadow-xl overflow-hidden animate-fade-in">
             {/* Photo Section */}
             <div className="h-96 bg-gray-100 relative">
@@ -158,11 +221,16 @@ export default function Swipe() {
             </div>
           </div>
         ) : (
+          // No profiles available
           <div className="bg-white rounded-lg shadow-xl p-8 text-center">
             <p className="text-gray-500 mb-4">No profiles available in your area</p>
-            <p className="text-sm text-gray-400 mb-6">Try again later or check back soon!</p>
+            <p className="text-sm text-gray-400 mb-6">
+              {queue.length === 0 
+                ? 'Be the first in your city or check back when others join!'
+                : 'You\'ve seen everyone! Check back later for new profiles.'}
+            </p>
             <button
-              onClick={fetchProfiles}
+              onClick={checkPermissionAndFetchProfiles}
               className="px-6 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
             >
               Refresh

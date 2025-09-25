@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { matches } from '../lib/api';
+import { matches, auth } from '../lib/api';
 
 export default function Matches() {
   const router = useRouter();
@@ -46,12 +46,25 @@ export default function Matches() {
     return date.toLocaleDateString();
   };
 
+  const handleLogout = () => {
+    if (confirm('Are you sure you want to logout?')) {
+      auth.logout();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-100 to-purple-100 p-4">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-lg shadow p-4 mb-6 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-700">My Matches</h1>
+          <h1 className="text-2xl font-bold text-primary-700">
+            My Matches
+            {matchList.length > 0 && (
+              <span className="ml-2 text-sm bg-primary-100 text-primary-700 px-2 py-1 rounded-full">
+                {matchList.length}
+              </span>
+            )}
+          </h1>
           <div className="flex gap-2">
             <button
               onClick={() => router.push('/swipe')}
@@ -64,6 +77,12 @@ export default function Matches() {
               className="px-4 py-2 text-primary-600 hover:bg-primary-50 rounded transition-colors"
             >
               Profile
+            </button>
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+            >
+              Logout
             </button>
           </div>
         </div>
@@ -123,7 +142,7 @@ export default function Matches() {
                           className="ml-2 text-primary-600 hover:text-primary-800 transition-colors"
                           title="Copy to clipboard"
                         >
-                          {copiedId === match.id ? '✓' : '📋'}
+                          {copiedId === match.id ? '✔' : '📋'}
                         </button>
                       </div>
                     </div>
