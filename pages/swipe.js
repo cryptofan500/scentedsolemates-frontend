@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
-import { profiles, auth } from '../lib/api';
+import { profiles, auth, security } from '../lib/api';
 
 export default function Swipe() {
   const router = useRouter();
@@ -11,6 +11,8 @@ export default function Swipe() {
   const [showMatch, setShowMatch] = useState(false);
   const [canSwipe, setCanSwipe] = useState(false);
   const [photoWarning, setPhotoWarning] = useState('');
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState('');
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -48,11 +50,18 @@ export default function Swipe() {
   const fetchProfiles = async () => {
     try {
       const response = await profiles.getQueue();
-      setQueue(response.data);
+      const profilesData = response.data;
+      
+      // Add mode badges to profiles
+      const enhancedProfiles = profilesData.map(profile => ({
+        ...profile,
+        modeDisplay: profile.mode === 'apocalypse_ankles' ? '🔥' : '🦶'
+      }));
+      
+      setQueue(enhancedProfiles);
       setCurrentIndex(0);
     } catch (err) {
       console.error('Failed to fetch profiles:', err);
-      // If error is about missing photo, show warning
       if (err.includes && err.includes('upload a photo')) {
         setPhotoWarning('You must upload at least one photo to see other profiles');
         setCanSwipe(false);
@@ -83,13 +92,32 @@ export default function Swipe() {
       }
     } catch (err) {
       console.error('Swipe failed:', err);
-      // Show error to user
       if (err.includes && err.includes('Cannot swipe on yourself')) {
         alert('You cannot swipe on yourself!');
       }
     }
     
     setSwiping(false);
+  };
+
+  const handleReport = async () => {
+    if (!reportReason || !queue[currentIndex]) return;
+    
+    try {
+      await security.report(queue[currentIndex].id, reportReason);
+      alert('Report submitted. Thank you for keeping our community safe.');
+      setShowReportModal(false);
+      setReportReason('');
+      
+      // Move to next profile
+      if (currentIndex < queue.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+      } else {
+        await fetchProfiles();
+      }
+    } catch (err) {
+      alert('Failed to submit report: ' + err);
+    }
   };
 
   const handleLogout = () => {
@@ -108,6 +136,44 @@ export default function Swipe() {
           <div className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-xl">
             <p className="font-bold text-lg">🎉 It's a Match!</p>
             <p className="text-sm">Check your matches to connect!</p>
+          </div>
+        </div>
+      )}
+
+      {/* Report Modal */}
+      {showReportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold mb-4">Report User</h3>
+            <select
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              className="w-full p-2 border rounded-lg mb-4"
+            >
+              <option value="">Select reason</option>
+              <option value="spam">Spam</option>
+              <option value="fake">Fake Profile</option>
+              <option value="inappropriate">Inappropriate Content</option>
+              <option value="other">Other</option>
+            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={handleReport}
+                disabled={!reportReason}
+                className="flex-1 bg-red-600 text-white py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
+              >
+                Submit Report
+              </button>
+              <button
+                onClick={() => {
+                  setShowReportModal(false);
+                  setReportReason('');
+                }}
+                className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -149,7 +215,6 @@ export default function Swipe() {
             </div>
           </div>
         ) : !canSwipe ? (
-          // Photo Warning State
           <div className="bg-white rounded-lg shadow-xl p-8 text-center">
             <div className="text-6xl mb-4">📸</div>
             <h2 className="text-xl font-semibold mb-4 text-gray-700">Photo Required</h2>
@@ -164,7 +229,6 @@ export default function Swipe() {
             </button>
           </div>
         ) : currentProfile ? (
-          // Swipe Card
           <div className="bg-white rounded-lg shadow-xl overflow-hidden animate-fade-in">
             {/* Photo Section */}
             <div className="h-96 bg-gray-100 relative">
@@ -183,9 +247,26 @@ export default function Swipe() {
                 </div>
               )}
               
+              {/* Mode Badge */}
+              <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full flex items-center gap-1">
+                <span className="text-lg">{currentProfile.modeDisplay}</span>
+                <span className="text-xs">
+                  {currentProfile.mode === 'apocalypse_ankles' ? 'Apocalypse' : 'Tease'}
+                </span>
+              </div>
+
+              {/* Report Button */}
+              <button
+                onClick={() => setShowReportModal(true)}
+                className="absolute top-4 right-4 bg-white bg-opacity-80 p-2 rounded-full shadow hover:bg-red-100 transition-colors"
+                title="Report User"
+              >
+                🚩
+              </button>
+              
               {/* Photo count indicator */}
               {currentProfile.photos && currentProfile.photos.length > 1 && (
-                <div className="absolute top-4 right-4 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
                   1 / {currentProfile.photos.length}
                 </div>
               )}
@@ -199,6 +280,13 @@ export default function Swipe() {
               <p className="text-gray-600 mb-4">📍 {currentProfile.city}</p>
               {currentProfile.bio && (
                 <p className="text-gray-700 text-sm">{currentProfile.bio}</p>
+              )}
+              
+              {/* Show if they have foot photos - FIXED FOR BACKWARDS COMPATIBILITY */}
+              {currentProfile.photos?.some(p => p.photo_type === 'feet' || p.type === 'feet') && (
+                <div className="mt-3 inline-block bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm">
+                  👣 Has foot photos
+                </div>
               )}
             </div>
 
@@ -221,7 +309,6 @@ export default function Swipe() {
             </div>
           </div>
         ) : (
-          // No profiles available
           <div className="bg-white rounded-lg shadow-xl p-8 text-center">
             <p className="text-gray-500 mb-4">No profiles available in your area</p>
             <p className="text-sm text-gray-400 mb-6">

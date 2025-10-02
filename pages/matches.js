@@ -6,7 +6,7 @@ export default function Matches() {
   const router = useRouter();
   const [matchList, setMatchList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [copiedId, setCopiedId] = useState(null);
+  const [unmatchingId, setUnmatchingId] = useState(null);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -27,11 +27,27 @@ export default function Matches() {
     setLoading(false);
   };
 
-  const copyToClipboard = (text, matchId) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedId(matchId);
-      setTimeout(() => setCopiedId(null), 2000);
-    });
+  const handleUnmatch = async (matchId) => {
+    if (!confirm('Are you sure you want to unmatch? This will delete all messages.')) {
+      return;
+    }
+
+    setUnmatchingId(matchId);
+    try {
+      await matches.unmatch(matchId);
+      // Remove from list immediately for better UX
+      setMatchList(matchList.filter(m => m.id !== matchId));
+    } catch (err) {
+      console.error('Failed to unmatch:', err);
+      alert('Failed to unmatch. Please try again.');
+      // Refresh list in case of error
+      fetchMatches();
+    }
+    setUnmatchingId(null);
+  };
+
+  const handleChat = (matchId) => {
+    router.push(`/chat?matchId=${matchId}`);
   };
 
   const formatDate = (dateString) => {
@@ -128,23 +144,21 @@ export default function Matches() {
                       Matched {formatDate(match.created_at)}
                     </p>
                     
-                    {/* Contact Info */}
-                    <div className="bg-gradient-to-r from-primary-50 to-purple-50 p-3 rounded-lg">
-                      <p className="text-xs font-medium text-primary-900 mb-1">
-                        Contact Information:
-                      </p>
-                      <div className="flex items-center justify-between">
-                        <p className="text-primary-700 font-mono text-sm break-all">
-                          {match.partner.contact}
-                        </p>
-                        <button
-                          onClick={() => copyToClipboard(match.partner.contact, match.id)}
-                          className="ml-2 text-primary-600 hover:text-primary-800 transition-colors"
-                          title="Copy to clipboard"
-                        >
-                          {copiedId === match.id ? '✔' : '📋'}
-                        </button>
-                      </div>
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleChat(match.id)}
+                        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
+                      >
+                        💬 Message
+                      </button>
+                      <button
+                        onClick={() => handleUnmatch(match.id)}
+                        disabled={unmatchingId === match.id}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-red-100 hover:text-red-600 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {unmatchingId === match.id ? 'Unmatching...' : '✖ Unmatch'}
+                      </button>
                     </div>
                   </div>
                 </div>

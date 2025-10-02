@@ -8,10 +8,14 @@ export default function Profile() {
   const [bio, setBio] = useState('');
   const [contactMethod, setContactMethod] = useState('email');
   const [contactInfo, setContactInfo] = useState('');
+  const [gender, setGender] = useState('');
+  const [interestedIn, setInterestedIn] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [currentMode, setCurrentMode] = useState('tease_toes');
+  const [selectedPhotoType, setSelectedPhotoType] = useState('face');
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -30,13 +34,13 @@ export default function Profile() {
       setBio(data.bio || '');
       setContactMethod(data.contact_method || 'email');
       setContactInfo(data.contact_info || '');
-      
-      // Initialize photos correctly by mapping the URLs
-      setPhotos(data.photos?.map(p => p.url) || []);
+      setGender(data.gender || '');
+      setInterestedIn(data.interested_in || []);
+      setPhotos(data.photos?.map(p => ({ url: p.url, type: p.photo_type })) || []);
+      setCurrentMode(data.mode || 'tease_toes');
       setLoading(false);
     } catch (err) {
       console.error("Failed to fetch profile", err);
-      // Fallback to localStorage if API fails
       const userData = localStorage.getItem('user');
       if (userData) {
         const parsed = JSON.parse(userData);
@@ -44,38 +48,106 @@ export default function Profile() {
         setBio(parsed.bio || '');
         setContactMethod(parsed.contact_method || 'email');
         setContactInfo(parsed.contact_info || '');
+        setGender(parsed.gender || '');
+        setInterestedIn(parsed.interested_in || []);
+        setCurrentMode(parsed.mode || 'tease_toes');
       }
       setLoading(false);
     }
   };
 
+  // FIX: Capture file IMMEDIATELY before React recycles the event
   const handlePhotoUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    // CRITICAL: Store file reference in a const BEFORE any async operations
+    const selectedFile = e.target.files?.[0];
+    
+    if (!selectedFile) {
+      console.log('[UPLOAD] No file selected');
+      return;
+    }
+    
+    console.log('[UPLOAD] File captured:', {
+      name: selectedFile.name,
+      size: selectedFile.size,
+      type: selectedFile.type
+    });
     
     if (photos.length >= 3) {
       alert('Maximum 3 photos allowed');
+      e.target.value = ''; // Reset input
       return;
     }
 
     setUploading(true);
+    
     try {
-      const response = await profiles.uploadPhoto(file);
-      setPhotos([...photos, response.data.url]);
+      // Build FormData directly here with the captured file reference
+      const formData = new FormData();
+      formData.append('photo', selectedFile, selectedFile.name);
+      formData.append('photo_type', selectedPhotoType || 'face');
+      
+      console.log('[UPLOAD] Uploading to backend...');
+      
+      // Use fetch() instead of axios for better FormData handling
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      const response = await fetch('http://localhost:3001/api/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+          // DO NOT set Content-Type - browser sets it automatically with boundary
+        },
+        body: formData
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || `Upload failed with status ${response.status}`);
+      }
+      
+      console.log('[UPLOAD] Success:', data.url);
+      
+      // Add photo to local state
+      setPhotos([...photos, { url: data.url, type: data.type || selectedPhotoType }]);
       alert('Photo uploaded successfully!');
+      
+      // Reset file input and photo type selector
+      e.target.value = '';
+      setSelectedPhotoType('face');
+      
     } catch (err) {
-      alert('Failed to upload photo: ' + err);
+      console.error('[UPLOAD] Error:', err);
+      alert('Failed to upload photo: ' + err.message);
     }
+    
     setUploading(false);
   };
 
+  const handleInterestedInChange = (value) => {
+    const newInterested = interestedIn.includes(value)
+      ? interestedIn.filter(item => item !== value)
+      : [...interestedIn, value];
+    setInterestedIn(newInterested);
+  };
+
   const handleSave = async () => {
+    if (interestedIn.length === 0) {
+      alert('Please select at least one preference');
+      return;
+    }
+
     setSaving(true);
     try {
       const updates = {
         bio: bio.trim(),
         contact_method: contactMethod,
-        contact_info: contactMethod === 'phone' ? contactInfo.trim() : ''
+        contact_info: contactMethod === 'phone' ? contactInfo.trim() : '',
+        gender: gender,
+        interested_in: interestedIn
       };
       
       const response = await profiles.updateProfile(updates);
@@ -161,6 +233,95 @@ export default function Profile() {
             <p><span className="font-medium">Email:</span> {user.email}</p>
             <p><span className="font-medium">Age:</span> {user.age}</p>
             <p><span className="font-medium">City:</span> {user.city}</p>
+            {!user.email_verified && (
+              <p className="text-yellow-600">
+                <span className="font-medium">Status:</span> Pending manual approval
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Gender & Preferences */}
+        <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
+          <h2 className="text-xl font-semibold mb-4">Gender & Preferences</h2>
+          
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              I am:
+            </label>
+            <div className="flex gap-3">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="gender"
+                  value="male"
+                  checked={gender === 'male'}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="mr-2 text-primary-600"
+                />
+                <span>Male</span>
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="gender"
+                  value="female"
+                  checked={gender === 'female'}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="mr-2 text-primary-600"
+                />
+                <span>Female</span>
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  name="gender"
+                  value="non-binary"
+                  checked={gender === 'non-binary'}
+                  onChange={(e) => setGender(e.target.value)}
+                  className="mr-2 text-primary-600"
+                />
+                <span>Non-binary</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Interested in:
+            </label>
+            <div className="flex gap-3">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  value="male"
+                  checked={interestedIn.includes('male')}
+                  onChange={() => handleInterestedInChange('male')}
+                  className="mr-2 text-primary-600"
+                />
+                <span>Men</span>
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  value="female"
+                  checked={interestedIn.includes('female')}
+                  onChange={() => handleInterestedInChange('female')}
+                  className="mr-2 text-primary-600"
+                />
+                <span>Women</span>
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  value="non-binary"
+                  checked={interestedIn.includes('non-binary')}
+                  onChange={() => handleInterestedInChange('non-binary')}
+                  className="mr-2 text-primary-600"
+                />
+                <span>Non-binary</span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -182,7 +343,7 @@ export default function Profile() {
         <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
           <h2 className="text-xl font-semibold mb-4">Contact Preferences</h2>
           <p className="text-sm text-gray-600 mb-4">
-            When you match, this is how they'll contact you:
+            With in-app messaging, your contact info is optional
           </p>
           
           <div className="space-y-3">
@@ -194,7 +355,7 @@ export default function Profile() {
                 onChange={(e) => setContactMethod(e.target.value)}
                 className="mr-3 text-primary-600"
               />
-              <span>Share my email ({user.email})</span>
+              <span>Keep contact private (use in-app chat only)</span>
             </label>
             
             <label className="flex items-center cursor-pointer">
@@ -205,7 +366,7 @@ export default function Profile() {
                 onChange={(e) => setContactMethod(e.target.value)}
                 className="mr-3 text-primary-600"
               />
-              <span>Share my phone number</span>
+              <span>Share phone number (optional)</span>
             </label>
             
             {contactMethod === 'phone' && (
@@ -213,30 +374,54 @@ export default function Profile() {
                 type="tel"
                 value={contactInfo}
                 onChange={(e) => setContactInfo(e.target.value)}
-                placeholder="Enter phone number (e.g., +1 555-0123)"
+                placeholder="Enter phone number (optional)"
                 className="w-full mt-2 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             )}
           </div>
         </div>
 
-        {/* Photos */}
+        {/* Photos with Type Selection - FIXED UPLOAD */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
           <h2 className="text-xl font-semibold mb-4">
             My Photos ({photos.length}/3)
             {photos.length === 0 && (
-              <span className="text-red-500 text-sm ml-2">* Required</span>
+              <span className="text-red-500 text-sm ml-2">* Required for swiping</span>
             )}
           </h2>
           
+          {/* Photo Type Selector */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Photo Type to Upload:
+            </label>
+            <select
+              value={selectedPhotoType}
+              onChange={(e) => setSelectedPhotoType(e.target.value)}
+              className="w-full p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              disabled={uploading}
+            >
+              <option value="face">Face</option>
+              <option value="feet">Feet</option>
+              <option value="socks">Socks</option>
+              <option value="shoes">Shoes</option>
+              <option value="pedicure">Pedicure</option>
+            </select>
+          </div>
+          
           <div className="grid grid-cols-3 gap-4 mb-4">
-            {photos.map((url, idx) => (
-              <div key={idx} className="aspect-square bg-gray-200 rounded-lg overflow-hidden">
+            {photos.map((photo, idx) => (
+              <div key={idx} className="aspect-square bg-gray-200 rounded-lg overflow-hidden relative">
                 <img 
-                  src={url} 
+                  src={photo.url} 
                   alt={`Photo ${idx + 1}`} 
                   className="w-full h-full object-cover"
                 />
+                {photo.type && (
+                  <div className="absolute bottom-1 right-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                    {photo.type}
+                  </div>
+                )}
               </div>
             ))}
             
@@ -245,11 +430,11 @@ export default function Profile() {
                 photos.length === 0 
                   ? 'bg-yellow-50 border-2 border-yellow-300 hover:bg-yellow-100' 
                   : 'bg-gray-100 hover:bg-gray-200'
-              }`}>
+              } ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 <div className="text-center">
                   <p className="text-4xl mb-2">📷</p>
                   <p className="text-sm text-gray-600">
-                    {photos.length === 0 ? 'Add Photo (Required)' : 'Add Photo'}
+                    {uploading ? 'Uploading...' : (photos.length === 0 ? 'Add Photo (Required)' : 'Add Photo')}
                   </p>
                 </div>
                 <input
@@ -265,12 +450,6 @@ export default function Profile() {
           
           {uploading && (
             <p className="text-center text-gray-500">Uploading photo...</p>
-          )}
-          
-          {photos.length === 0 && (
-            <p className="text-sm text-yellow-600 bg-yellow-50 p-2 rounded">
-              ⚠️ You won't be able to see other profiles until you upload at least one photo
-            </p>
           )}
         </div>
 
