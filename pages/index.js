@@ -1,4 +1,4 @@
-// Cache buster v3 - Debug logging enabled + PASSWORD VALIDATION UI
+// Cache buster v4 - Legal compliance + PASSWORD VALIDATION UI
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { auth } from '../lib/api';
@@ -18,6 +18,10 @@ export default function Home() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showResendVerification, setShowResendVerification] = useState(false);
+  
+  // Legal compliance checkboxes
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [confirmed18, setConfirmed18] = useState(false);
 
   useEffect(() => {
     if (localStorage.getItem('token')) {
@@ -37,6 +41,15 @@ export default function Home() {
       }
       if (formData.interested_in.length === 0) {
         setError('Please select at least one preference');
+        return;
+      }
+      // Legal validation
+      if (!confirmed18) {
+        setError('You must confirm you are 18 years or older');
+        return;
+      }
+      if (!agreedTerms) {
+        setError('You must agree to the Terms of Service');
         return;
       }
     }
@@ -91,17 +104,30 @@ export default function Home() {
     setFormData({ ...formData, interested_in: newInterested });
   };
 
+  // Password validation helpers
+  const isPasswordValid = () => {
+    if (!formData.password || formData.password.length < 10) return false;
+    if (!/[A-Z]/.test(formData.password)) return false;
+    if (!/[a-z]/.test(formData.password)) return false;
+    if (!/[0-9]/.test(formData.password)) return false;
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password)) return false;
+    return true;
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-100 to-purple-100 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full animate-fade-in">
         <h1 className="text-3xl font-bold text-center mb-2 text-primary-700">
           ScentedSoleMates
         </h1>
-        <p className="text-gray-600 text-center mb-6">Find your perfect sole mate 👣</p>
+        <p className="text-gray-600 text-center mb-6">Find your perfect sole mate</p>
 
         <div className="flex mb-6 border-b">
           <button
-            onClick={() => setIsLogin(true)}
+            onClick={() => {
+              setIsLogin(true);
+              setError('');
+            }}
             className={`flex-1 py-2 transition-all ${
               isLogin 
                 ? 'border-b-2 border-primary-500 font-semibold text-primary-700' 
@@ -111,7 +137,12 @@ export default function Home() {
             Login
           </button>
           <button
-            onClick={() => setIsLogin(false)}
+            onClick={() => {
+              setIsLogin(false);
+              setError('');
+              setAgreedTerms(false);
+              setConfirmed18(false);
+            }}
             className={`flex-1 py-2 transition-all ${
               !isLogin 
                 ? 'border-b-2 border-primary-500 font-semibold text-primary-700' 
@@ -170,7 +201,7 @@ export default function Home() {
             value={formData.password}
             onChange={handleChange}
             required
-            minLength={6}
+            minLength={isLogin ? 6 : 10}
             className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
           />
 
@@ -299,12 +330,72 @@ export default function Home() {
                   </label>
                 </div>
               </div>
+
+              {/* LEGAL CHECKBOXES */}
+              <div className="pt-2 border-t border-gray-200 space-y-3">
+                {/* Age confirmation */}
+                <div className="flex items-start">
+                  <input 
+                    type="checkbox" 
+                    checked={confirmed18}
+                    onChange={(e) => setConfirmed18(e.target.checked)}
+                    className="mt-1 mr-3 h-4 w-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500"
+                    id="age-confirm"
+                  />
+                  <label htmlFor="age-confirm" className="text-sm text-gray-700 cursor-pointer">
+                    I confirm I am <strong>18 years of age or older</strong>
+                  </label>
+                </div>
+
+                {/* Terms agreement */}
+                <div className="flex items-start">
+                  <input 
+                    type="checkbox" 
+                    checked={agreedTerms}
+                    onChange={(e) => setAgreedTerms(e.target.checked)}
+                    className="mt-1 mr-3 h-4 w-4 text-primary-600 rounded focus:ring-2 focus:ring-primary-500"
+                    id="terms-agree"
+                  />
+                  <label htmlFor="terms-agree" className="text-sm text-gray-700 cursor-pointer">
+                    I agree to the{' '}
+                    <a 
+                      href="/terms" 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-600 hover:text-primary-800 underline font-medium"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Terms of Service
+                    </a>
+                    ,{' '}
+                    <a 
+                      href="/privacy" 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-600 hover:text-primary-800 underline font-medium"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Privacy Policy
+                    </a>
+                    , and{' '}
+                    <a 
+                      href="/guidelines" 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary-600 hover:text-primary-800 underline font-medium"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      Community Guidelines
+                    </a>
+                  </label>
+                </div>
+              </div>
             </>
           )}
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (!isLogin && (!agreedTerms || !confirmed18 || !isPasswordValid()))}
             className="w-full bg-primary-600 text-white py-3 rounded-lg font-semibold hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {loading ? 'Please wait...' : (isLogin ? 'Login' : 'Create Account')}
@@ -314,7 +405,14 @@ export default function Home() {
         <p className="text-center mt-6 text-sm text-gray-600">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
           <button
-            onClick={() => setIsLogin(!isLogin)}
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError('');
+              if (isLogin) {
+                setAgreedTerms(false);
+                setConfirmed18(false);
+              }
+            }}
             className="text-primary-600 font-semibold hover:underline"
           >
             {isLogin ? 'Register' : 'Login'}
@@ -322,10 +420,12 @@ export default function Home() {
         </p>
 
         {!isLogin && (
-          <p className="text-xs text-gray-500 text-center mt-4">
-            Note: You'll need to verify your email before logging in.
-            Test users are pre-verified for immediate testing.
-          </p>
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs text-blue-800 text-center">
+              By registering, you confirm you are 18+ and agree to our community standards. 
+              We reserve the right to suspend accounts that violate our guidelines.
+            </p>
+          </div>
         )}
       </div>
     </div>
