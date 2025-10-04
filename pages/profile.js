@@ -56,9 +56,7 @@ export default function Profile() {
     }
   };
 
-  // FIX: Capture file IMMEDIATELY before React recycles the event
   const handlePhotoUpload = async (e) => {
-    // CRITICAL: Store file reference in a const BEFORE any async operations
     const selectedFile = e.target.files?.[0];
     
     if (!selectedFile) {
@@ -74,31 +72,28 @@ export default function Profile() {
     
     if (photos.length >= 3) {
       alert('Maximum 3 photos allowed');
-      e.target.value = ''; // Reset input
+      e.target.value = '';
       return;
     }
 
     setUploading(true);
     
     try {
-      // Build FormData directly here with the captured file reference
       const formData = new FormData();
       formData.append('photo', selectedFile, selectedFile.name);
       formData.append('photo_type', selectedPhotoType || 'face');
       
       console.log('[UPLOAD] Uploading to backend...');
       
-      // Use fetch() instead of axios for better FormData handling
       const token = localStorage.getItem('token');
       if (!token) {
         throw new Error('No authentication token found');
       }
       
-      const response = await fetch('http://localhost:3001/api/upload', {
+      const response = await fetch('https://scentedsolemates-backend.onrender.com/api/upload', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
-          // DO NOT set Content-Type - browser sets it automatically with boundary
         },
         body: formData
       });
@@ -111,11 +106,9 @@ export default function Profile() {
       
       console.log('[UPLOAD] Success:', data.url);
       
-      // Add photo to local state
       setPhotos([...photos, { url: data.url, type: data.type || selectedPhotoType }]);
       alert('Photo uploaded successfully!');
       
-      // Reset file input and photo type selector
       e.target.value = '';
       setSelectedPhotoType('face');
       
@@ -182,7 +175,6 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-100 to-purple-100 p-4">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
         <div className="bg-white rounded-lg shadow p-4 mb-6 flex justify-between items-center">
           <h1 className="text-2xl font-bold text-primary-700">My Profile</h1>
           <div className="flex gap-2">
@@ -207,7 +199,6 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Photo Warning Alert */}
         {photos.length === 0 && (
           <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
             <div className="flex">
@@ -225,7 +216,6 @@ export default function Profile() {
           </div>
         )}
 
-        {/* Basic Info */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
           <h2 className="text-xl font-semibold mb-4">Basic Information</h2>
           <div className="space-y-2 text-gray-600">
@@ -233,15 +223,9 @@ export default function Profile() {
             <p><span className="font-medium">Email:</span> {user.email}</p>
             <p><span className="font-medium">Age:</span> {user.age}</p>
             <p><span className="font-medium">City:</span> {user.city}</p>
-            {!user.email_verified && (
-              <p className="text-yellow-600">
-                <span className="font-medium">Status:</span> Pending manual approval
-              </p>
-            )}
           </div>
         </div>
 
-        {/* Gender & Preferences */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
           <h2 className="text-xl font-semibold mb-4">Gender & Preferences</h2>
           
@@ -325,7 +309,6 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Bio */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
           <h2 className="text-xl font-semibold mb-4">About Me</h2>
           <textarea
@@ -339,7 +322,6 @@ export default function Profile() {
           <p className="text-sm text-gray-500 mt-2">{bio.length}/500 characters</p>
         </div>
 
-        {/* Contact Preferences */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
           <h2 className="text-xl font-semibold mb-4">Contact Preferences</h2>
           <p className="text-sm text-gray-600 mb-4">
@@ -381,7 +363,6 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Photos with Type Selection - FIXED UPLOAD */}
         <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
           <h2 className="text-xl font-semibold mb-4">
             My Photos ({photos.length}/3)
@@ -390,7 +371,6 @@ export default function Profile() {
             )}
           </h2>
           
-          {/* Photo Type Selector */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Photo Type to Upload:
@@ -453,7 +433,6 @@ export default function Profile() {
           )}
         </div>
 
-        {/* Save Button */}
         <button
           onClick={handleSave}
           disabled={saving}
