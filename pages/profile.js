@@ -1,9 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { profiles, auth } from '../lib/api';
+import { compressImage, validateImageFile } from '../lib/imageTools';
+
+const MAX_PHOTOS = 6; // UPGRADED from 3
 
 export default function Profile() {
   const router = useRouter();
+  const fileInputRef = useRef(null);
   const [user, setUser] = useState(null);
   const [bio, setBio] = useState('');
   const [contactMethod, setContactMethod] = useState('email');
@@ -14,7 +18,6 @@ export default function Profile() {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [currentMode, setCurrentMode] = useState('tease_toes');
   const [selectedPhotoType, setSelectedPhotoType] = useState('face');
 
   useEffect(() => {
@@ -37,7 +40,6 @@ export default function Profile() {
       setGender(data.gender || '');
       setInterestedIn(data.interested_in || []);
       setPhotos(data.photos?.map(p => ({ url: p.url, type: p.photo_type })) || []);
-      setCurrentMode(data.mode || 'tease_toes');
       setLoading(false);
     } catch (err) {
       console.error("Failed to fetch profile", err);
@@ -50,7 +52,6 @@ export default function Profile() {
         setContactInfo(parsed.contact_info || '');
         setGender(parsed.gender || '');
         setInterestedIn(parsed.interested_in || []);
-        setCurrentMode(parsed.mode || 'tease_toes');
       }
       setLoading(false);
     }
@@ -60,30 +61,39 @@ export default function Profile() {
     const selectedFile = e.target.files?.[0];
     
     if (!selectedFile) {
-      console.log('[UPLOAD] No file selected');
       return;
     }
     
-    console.log('[UPLOAD] File captured:', {
+    console.log('[UPLOAD] File selected:', {
       name: selectedFile.name,
       size: selectedFile.size,
       type: selectedFile.type
     });
     
-    if (photos.length >= 3) {
-      alert('Maximum 3 photos allowed');
-      e.target.value = '';
+    if (photos.length >= MAX_PHOTOS) {
+      alert(`Maximum ${MAX_PHOTOS} photos allowed`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
     setUploading(true);
     
     try {
-      const formData = new FormData();
-      formData.append('photo', selectedFile, selectedFile.name);
-      formData.append('photo_type', selectedPhotoType || 'face');
+      // VALIDATE
+      validateImageFile(selectedFile);
       
-      console.log('[UPLOAD] Uploading to backend...');
+      // COMPRESS WITH EXIF PRESERVATION
+      const compressedFile = await compressImage(selectedFile, {
+        maxSizeMB: 0.5,
+        maxWidthOrHeight: 1600
+      });
+      
+      console.log(`[UPLOAD] Compressed: ${selectedFile.size} → ${compressedFile.size} bytes (EXIF preserved)`);
+      
+      // UPLOAD
+      const formData = new FormData();
+      formData.append('photo', compressedFile, compressedFile.name);
+      formData.append('photo_type', selectedPhotoType || 'face');
       
       const token = localStorage.getItem('token');
       if (!token) {
@@ -109,7 +119,7 @@ export default function Profile() {
       setPhotos([...photos, { url: data.url, type: data.type || selectedPhotoType }]);
       alert('Photo uploaded successfully!');
       
-      e.target.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setSelectedPhotoType('face');
       
     } catch (err) {
@@ -222,7 +232,7 @@ export default function Profile() {
             <p><span className="font-medium">Username:</span> {user.username}</p>
             <p><span className="font-medium">Email:</span> {user.email}</p>
             <p><span className="font-medium">Age:</span> {user.age}</p>
-            <p><span className="font-medium">City:</span> {user.city}</p>
+            <p><span className="font-medium">City:</span> GTA Metro</p>
           </div>
         </div>
 
@@ -365,7 +375,7 @@ export default function Profile() {
 
         <div className="bg-white rounded-lg shadow p-6 mb-6 animate-fade-in">
           <h2 className="text-xl font-semibold mb-4">
-            My Photos ({photos.length}/3)
+            My Photos ({photos.length}/{MAX_PHOTOS})
             {photos.length === 0 && (
               <span className="text-red-500 text-sm ml-2">* Required for swiping</span>
             )}
@@ -405,7 +415,7 @@ export default function Profile() {
               </div>
             ))}
             
-            {photos.length < 3 && (
+            {photos.length < MAX_PHOTOS && (
               <label className={`aspect-square rounded-lg flex items-center justify-center cursor-pointer transition-colors ${
                 photos.length === 0 
                   ? 'bg-yellow-50 border-2 border-yellow-300 hover:bg-yellow-100' 
@@ -422,6 +432,7 @@ export default function Profile() {
                   accept="image/*"
                   onChange={handlePhotoUpload}
                   disabled={uploading}
+                  ref={fileInputRef}
                   className="hidden"
                 />
               </label>
@@ -429,8 +440,12 @@ export default function Profile() {
           </div>
           
           {uploading && (
-            <p className="text-center text-gray-500">Uploading photo...</p>
+            <p className="text-center text-blue-600">Processing and compressing (EXIF preserved)...</p>
           )}
+          
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            Auto-compressed to &lt;500KB. EXIF metadata preserved for security.
+          </p>
         </div>
 
         <button
